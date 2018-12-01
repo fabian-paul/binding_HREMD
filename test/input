@@ -1,0 +1,87 @@
+set rep [ getensemblerank ]
+set tot [ getensemblesize ]
+
+puts stderr "Replica $rep of $tot"
+
+# topology and initial coordinates
+amber on
+parmfile        0.prmtop 
+coordinates     system.pdb
+celldimension   76.2 76.2 76.2
+
+# initial coordinates for propagation step
+bincoordinates  0.equilibrated_temp.coor
+binvelocities   0.equilibrated_temp.vel
+temperature     300
+# set seed to 0 for debugging
+seed            0
+
+# at the end of simulation write state to #.md.coor, #.md.vel
+outputname      $rep.md
+
+# attempt exchange and write energy to stdout every 1/2 picosecond (125 steps)
+energyfreq      125
+
+timestep        4
+rigidbonds      all 
+hydrogenscale   4
+switching       off
+cutoff          9
+exclude         scaled1-4 
+1-4scaling      0.833333
+fullelectfrequency 2
+
+pme on
+pmegridsizex    80
+pmegridsizey    80
+pmegridsizez    80
+
+langevin        on
+langevindamping 0.1 
+langevintemp    300
+
+#berendsenpressure on
+
+# write xtc every 10ps
+xtcfile        $rep.md.xtc
+xtcfreq        2500
+
+
+# continue from restart file?
+set resume off
+
+# save restart info every 10 ns
+set restartfreq [expr 250*1000*10]
+restartsave off
+restartname $rep.restart
+restartfreq $restartfreq
+restart $resume
+
+pluginload hremd ./libhremd.so
+pluginfreq 1
+pluginarg hremd restartfreq $restartfreq
+pluginarg hremd restart $resume
+# save full energy matrix every 2500 steps (needed for WHAM)
+pluginarg hremd fullenergyfreq 2500
+
+set Es { -100000 }
+set alphas { 0 }
+for { set i 1 } { $i < 14 } { incr i } {
+  set Vmin [expr -250 / 4.184]
+  set sigma [expr 20 / 4.184]
+  set Vminnew [expr $Vmin*(1.0-$i/14.0) ]
+  puts $Vminnew
+  set E [expr $Vminnew + $sigma]
+  set alpha [expr ($E-$Vmin)*($E-$Vmin)/($Vminnew-$Vmin) + $Vmin - $E]
+  lappend Es $E
+  lappend alphas $alpha
+}
+pluginarg hremd E $Es
+pluginarg hremd alpha $alphas
+# Do we really need to go all the way up to Vminnew=0, or can we stop at 0.55*Vmin ~ -32 kcal/mol?
+# Look at trajctories and decide...
+
+# run 2 ns
+run [expr 250*2000]
+
+#run 25

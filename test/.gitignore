@@ -1,0 +1,6 @@
+*.log
+log.*
+FINISH_TIME
+*.md.*
+*.restart.*
+
